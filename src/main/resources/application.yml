@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: wallet-event-consumer
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/consumer}
+    username: ${DATABASE_USERNAME:consumer}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      connection-timeout: 3000
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:wallet}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 5s
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: true
+        prefetch: 10
+        concurrency: 1
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+logging:
+  structured:
+    format:
+      console: logstash
