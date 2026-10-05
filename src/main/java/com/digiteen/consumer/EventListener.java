@@ -40,7 +40,7 @@ public class EventListener {
             boolean inserted = service.record(event);
             log.atInfo().addKeyValue("eventId", event.eventId())
                     .addKeyValue("transactionId", event.transactionId())
-                    .addKeyValue("traceId", event.traceId()).addKeyValue("type", event.transactionType())
+                    .addKeyValue("type", event.transactionType())
                     .log(inserted ? "consumption_committed" : "consumption_duplicate");
         } finally {
             if (previousTraceId == null) {
