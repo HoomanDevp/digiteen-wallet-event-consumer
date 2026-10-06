@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+*.iml
+.env
+*.log
+README.md
+VERIFICATION.md

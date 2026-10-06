@@ -28,6 +28,7 @@ import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.core.env.Environment;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -36,6 +37,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.awaitility.Awaitility.await;
@@ -68,6 +70,7 @@ class ConsumerIntegrationTest {
     @Autowired RabbitAdmin admin;
     @Autowired RabbitListenerEndpointRegistry listeners;
     @Autowired ObjectMapper mapper;
+    @Autowired Environment environment;
     private final List<ILoggingEvent> logs = new CopyOnWriteArrayList<>();
     private final List<Boolean> committedRowsVisibleAtLog = new CopyOnWriteArrayList<>();
     private AppenderBase<ILoggingEvent> appender;
@@ -100,6 +103,30 @@ class ConsumerIntegrationTest {
         jdbc.execute("DROP SEQUENCE IF EXISTS failed_attempts");
         ((Logger) LoggerFactory.getLogger(EventListener.class)).detachAppender(appender);
         appender.stop();
+    }
+
+    @Test
+    void durableTopologyAndHealthOnlyHttpEndpointAreAvailable() throws Exception {
+        var queue = managementJson("queues/%2F/" + RabbitTopology.QUEUE);
+        assertThat(queue.get("durable").asBoolean()).isTrue();
+        assertThat(queue.get("auto_delete").asBoolean()).isFalse();
+        var exchange = managementJson("exchanges/%2F/" + RabbitTopology.EXCHANGE);
+        assertThat(exchange.get("type").asText()).isEqualTo("direct");
+        assertThat(exchange.get("durable").asBoolean()).isTrue();
+        var bindings = managementJson("bindings/%2F/e/" + RabbitTopology.EXCHANGE + "/q/" + RabbitTopology.QUEUE);
+        assertThat(bindings.size()).isEqualTo(1);
+        assertThat(bindings.get(0).get("routing_key").asText()).isEqualTo(RabbitTopology.ROUTING_KEY);
+        String url = "http://127.0.0.1:" + environment.getRequiredProperty("local.server.port");
+        assertThat(HealthCheck.check(URI.create(url + "/actuator/health"))).isTrue();
+        try (var client = HttpClient.newHttpClient()) {
+            var health = client.send(HttpRequest.newBuilder(URI.create(url + "/actuator/health"))
+                    .timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(mapper.readTree(health.body()).get("status").asText()).isEqualTo("UP");
+            assertThat(mapper.readTree(health.body()).get("components")).isNull();
+            var hidden = client.send(HttpRequest.newBuilder(URI.create(url + "/actuator/info"))
+                    .timeout(Duration.ofSeconds(3)).GET().build(), HttpResponse.BodyHandlers.discarding());
+            assertThat(hidden.statusCode()).isEqualTo(404);
+        }
     }
 
     @Test
@@ -215,17 +242,21 @@ class ConsumerIntegrationTest {
     private long ready() { return admin.getQueueInfo(RabbitTopology.QUEUE).getMessageCount(); }
 
     private int queueMetric(String name) throws Exception {
+        var metric = managementJson("queues/%2F/" + RabbitTopology.QUEUE).get(name);
+        assertThat(metric).as("Rabbit management queue statistic %s", name).isNotNull();
+        return metric.asInt();
+    }
+
+    private JsonNode managementJson(String path) throws Exception {
         String credentials = rabbit.getAdminUsername() + ":" + rabbit.getAdminPassword();
         var request = HttpRequest.newBuilder(URI.create("http://" + rabbit.getHost() + ":"
-                + rabbit.getHttpPort() + "/api/queues/%2F/" + RabbitTopology.QUEUE))
+                + rabbit.getHttpPort() + "/api/" + path))
                 .timeout(Duration.ofSeconds(3)).header("Authorization", "Basic "
                         + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8))).GET().build();
         try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()) {
             var response = client.send(request, HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(200);
-            var metric = mapper.readTree(response.body()).get(name);
-            assertThat(metric).as("Rabbit management queue statistic %s", name).isNotNull();
-            return metric.asInt();
+            return mapper.readTree(response.body());
         }
     }
 }
