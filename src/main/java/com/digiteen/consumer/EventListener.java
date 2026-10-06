@@ -37,8 +37,20 @@ public class EventListener {
         String previousTraceId = MDC.get("traceId");
         try (var ignored = MDC.putCloseable("traceId", event.traceId().toString())) {
             // The separate service proxy commits before returning. AUTO ack follows this listener.
-            boolean inserted = service.record(event);
-            log.atInfo().addKeyValue("eventId", event.eventId())
+            boolean inserted;
+            try {
+                inserted = service.record(event);
+            } catch (RuntimeException failure) {
+                // Log while the original trace is scoped; rethrow so failed writes remain unacknowledged.
+                log.atWarn().addKeyValue("stage", "consumption_failed")
+                        .addKeyValue("eventId", event.eventId())
+                        .addKeyValue("transactionId", event.transactionId())
+                        .addKeyValue("errorType", failure.getClass().getSimpleName())
+                        .log("consumption_failed");
+                throw failure;
+            }
+            log.atInfo().addKeyValue("stage", inserted ? "consumption_committed" : "consumption_duplicate")
+                    .addKeyValue("eventId", event.eventId())
                     .addKeyValue("transactionId", event.transactionId())
                     .addKeyValue("type", event.transactionType())
                     .log(inserted ? "consumption_committed" : "consumption_duplicate");

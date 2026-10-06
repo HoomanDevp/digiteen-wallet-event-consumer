@@ -90,7 +90,15 @@ class EventListenerTest {
             when(service.record(event)).thenThrow(new DataAccessResourceFailureException("unavailable"));
             assertThatThrownBy(() -> listener.consume(message(event)))
                     .isInstanceOf(DataAccessResourceFailureException.class);
-            assertThat(appender.list).hasSize(beforeFailure);
+            assertThat(appender.list).hasSize(beforeFailure + 1);
+            ILoggingEvent failed = appender.list.getLast();
+            assertThat(failed.getFormattedMessage()).isEqualTo("consumption_failed");
+            assertThat(failed.getMDCPropertyMap()).containsEntry("traceId", event.traceId().toString());
+            assertThat(failed.getKeyValuePairs()).anySatisfy(pair -> {
+                assertThat(pair.key).isEqualTo("eventId");
+                assertThat(pair.value).isEqualTo(event.eventId());
+            });
+            assertThat(failed.getThrowableProxy()).isNull();
             assertThat(MDC.get("traceId")).isEqualTo("existing-context");
             MDC.remove("traceId");
             assertThatThrownBy(() -> listener.consume(message(event)))
