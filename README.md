@@ -4,6 +4,26 @@ Independent Java 25 / Spring Boot 4.0.6 / Maven 3.9.12 service. Consumes success
 wallet-operation events and stores an audit record in its **own PostgreSQL database**.
 It does not update balances, call the wallet API, or share the wallet database or code.
 
+Executed acceptance evidence: [VERIFICATION.md](VERIFICATION.md). The combined checklist and
+live delivery results are committed in the wallet repository's
+[FINAL_ACCEPTANCE.md](https://github.com/HoomanDevp/digiteen-wallet-service/blob/main/FINAL_ACCEPTANCE.md)
+(available after private publication and access; locally: `../wallet-service/FINAL_ACCEPTANCE.md`).
+
+## Checkout layout for reviewers
+
+After private publication and access are available, use explicit local directory names:
+
+```sh
+mkdir -p digiteen-assessment
+cd digiteen-assessment
+git clone https://github.com/HoomanDevp/digiteen-wallet-service.git wallet-service
+git clone https://github.com/HoomanDevp/digiteen-wallet-event-consumer.git wallet-event-consumer
+cd wallet-event-consumer
+```
+
+Any writable parent directory works. The integrated paths below use this sibling layout,
+not machine-specific absolute paths. Standalone consumer startup needs only this repository.
+
 ## Run modes
 
 ### Isolated consumer development stack
